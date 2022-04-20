@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -Eefu -o pipefail
+
+echo "--- Merge commit plugin"
+
+echo "Original commit:"
+git --no-pager log -n 1
+
+if [[ "${BUILDKITE_PULL_REQUEST:?}" == "false" ]]; then
+    echo "This is not a pull request."
+else
+    echo "This is a pull request."
+    echo "Pull request number: ${BUILDKITE_PULL_REQUEST:?}"
+    if [[ "${BUILDKITE_SOURCE:?}" == "webhook" ]]; then
+        echo "The build source is: ${BUILDKITE_SOURCE:?}"
+        echo "This is not a webhook build, so we will not check out the merge commit, even though this is a pull request."
+        echo "This behavior is intentional."
+        echo "It allows users to manually trigger builds that do not use the merge commit."
+        echo "For example, this can be useful if the main branch is in a broken state."
+    else
+        sleep 3 # Give GitHub a few seconds to create the merge commit.
+        echo "Fetching the merge commit from origin"
+        git fetch origin "+refs/pull/${BUILDKITE_PULL_REQUEST:?}/merge"
+        echo "Checking out the merge commit"
+        git checkout --force FETCH_HEAD
+        echo "The merge commit is:"
+        git --no-pager log -n 1
+    fi
+fi

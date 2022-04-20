@@ -1,0 +1,7 @@
+name: Merge Commit
+description: If the build is a pull request, check out the merge commit.
+author: https://github.com/JuliaCI
+requirements: [git]
+configuration:
+  properties: {}
+  additionalProperties: false
