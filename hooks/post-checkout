@@ -13,6 +13,13 @@ else
     echo "This is a pull request."
     echo "Pull request number: ${BUILDKITE_PULL_REQUEST:?}"
     if [[ "${BUILDKITE_SOURCE:?}" != "webhook" ]]; then
+        # According to the docs (https://buildkite.com/docs/pipelines/environment-variables#bk-env-vars-buildkite-source),
+        # the possible values for `BUILDKITE_SOURCE` are:
+        # - webhook
+        # - api
+        # - ui
+        # - trigger_job
+        # - schedule
         echo "The build source is: ${BUILDKITE_SOURCE:?}"
         echo "This is not a webhook build, so we will not check out the merge commit, even though this is a pull request."
         echo "This behavior is intentional."
