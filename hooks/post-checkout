@@ -9,14 +9,68 @@ git --no-pager log -n 1
 
 if [[ "${BUILDKITE_PULL_REQUEST:?}" == "false" ]]; then
     echo "This is not a pull request."
-else
-    echo "This is a pull request."
-    echo "Pull request number: ${BUILDKITE_PULL_REQUEST:?}"
-    sleep 3 # Give GitHub a few seconds to create the merge commit.
-    echo "Fetching the merge commit from origin"
-    git fetch origin "+refs/pull/${BUILDKITE_PULL_REQUEST:?}/merge"
-    echo "Checking out the merge commit"
-    git checkout --force FETCH_HEAD
-    echo "The merge commit is:"
-    git --no-pager log -n 1
+    exit 0
 fi
+
+echo "This is a pull request."
+echo "Pull request number: ${BUILDKITE_PULL_REQUEST}"
+
+head_commit="$(git rev-parse HEAD)"
+head_ref="refs/pull/${BUILDKITE_PULL_REQUEST}/head"
+merge_ref="refs/pull/${BUILDKITE_PULL_REQUEST}/merge"
+
+# GitHub (re)creates the merge ref asynchronously after every push, so right after a
+# push it can be missing or still merge the previous head. While the pull request
+# conflicts with its base, a new head never gets one, so keep the total wait short.
+delays=(1 2 4 8 15 15)
+attempt=0
+
+# Once the head has moved on, GitHub will only produce merges of the new head.
+fail_if_head_moved() {
+    if [[ -n "${remote_head}" && "${remote_head}" != "${head_commit}" ]]; then
+        echo "The pull request head is now ${remote_head}, but this build is for ${head_commit}"
+        echo "and ${reason}. This build is out of date, unless ${head_commit} is a merge"
+        echo "commit that GitHub has since replaced (then retrying may help if the checkout resolves the current merge ref)."
+        exit 1
+    fi
+}
+
+while true; do
+    if ! refs="$(git ls-remote origin "${head_ref}" "${merge_ref}")"; then
+        reason="could not list the pull request refs on origin"
+    else
+        remote_head="$(awk -v ref="${head_ref}" '$2 == ref { print $1 }' <<< "${refs}")"
+        remote_merge="$(awk -v ref="${merge_ref}" '$2 == ref { print $1 }' <<< "${refs}")"
+        if [[ -z "${remote_merge}" ]]; then
+            reason="${merge_ref} does not exist"
+            fail_if_head_moved
+        elif [[ "${remote_merge}" == "${head_commit}" ]]; then
+            echo "The merge commit is already checked out."
+            exit 0
+        elif ! git fetch origin "+${merge_ref}"; then
+            reason="could not fetch ${merge_ref}"
+        elif [[ "$(git rev-parse -q --verify 'FETCH_HEAD^2' || true)" == "${head_commit}" ]]; then
+            break
+        else
+            reason="${merge_ref} does not merge ${head_commit}"
+            fail_if_head_moved
+        fi
+    fi
+
+    if (( attempt == ${#delays[@]} )); then
+        echo "Giving up after ${SECONDS} seconds: ${reason}."
+        echo "Possible causes:"
+        echo "- the pull request was closed or merged, which removes ${merge_ref};"
+        echo "- it has merge conflicts, which GitHub needs resolved before it creates a merge commit;"
+        echo "- GitHub is slow (see https://www.githubstatus.com) or origin is unreachable; retry this job later."
+        exit 1
+    fi
+    echo "Waiting ${delays[attempt]} seconds: ${reason}."
+    sleep "${delays[attempt]}"
+    attempt=$((attempt + 1))
+done
+
+echo "Checking out the merge commit"
+git checkout --force FETCH_HEAD
+echo "The merge commit is:"
+git --no-pager log -n 1
