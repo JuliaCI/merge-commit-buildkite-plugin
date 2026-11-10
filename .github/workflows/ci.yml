@@ -16,11 +16,15 @@ jobs:
         with:
           persist-credentials: false
       - run: docker compose run --rm lint
-  # test:
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 30
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #       with:
-  #         persist-credentials: false
-  #     - run: docker-compose run --rm test
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+      # /bin/bash is bash 3.2 on macOS, as on the macOS agents.
+      - run: /bin/bash tests/post-checkout.sh

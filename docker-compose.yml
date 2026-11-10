@@ -5,9 +5,3 @@ services:
     command: ['--id', 'JuliaCI/merge-commit']
     volumes:
       - ".:/plugin:ro"
-  # test:
-  #   build:
-  #     context: tests
-  #     dockerfile: Dockerfile
-  #   volumes:
-  #     - ".:/plugin:ro"
